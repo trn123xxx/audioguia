@@ -1,25 +1,28 @@
 /* ============================================================
    sw.js — Service Worker de Audioguía Personal
-   Gestiona caché offline para la app shell (HTML, CSS, JS)
-   Los audios se almacenan en IndexedDB, no aquí.
+   Compatible con GitHub Pages en subcarpeta /audioguia/
    ============================================================ */
 
-const CACHE_NAME = 'audioguia-v1';
+const CACHE_NAME = 'audioguia-v2';
+
+// Detectar la base path automáticamente desde la URL del SW
+const BASE = self.location.pathname.replace('/sw.js', '');
+
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  BASE + '/',
+  BASE + '/index.html',
+  BASE + '/manifest.json'
 ];
 
-/* Instalación: precaché del app shell */
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(APP_SHELL))
+      .catch(() => {}) // No bloquear instalación si falla el precaché
   );
   self.skipWaiting();
 });
 
-/* Activación: limpia cachés antiguas */
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -29,26 +32,31 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-/* Fetch: network-first para la API de Supabase, cache-first para el resto */
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  /* Las llamadas a Supabase siempre van a la red (necesitan datos frescos) */
-  if (url.hostname.includes('supabase.co')) {
-    event.respondWith(fetch(event.request).catch(() => new Response('Offline', { status: 503 })));
+  // Las llamadas a Supabase siempre van a la red
+  if (url.hostname.includes('supabase.co') ||
+      url.hostname.includes('unpkg.com') ||
+      url.hostname.includes('jsdelivr.net') ||
+      url.hostname.includes('openstreetmap.org')) {
+    event.respondWith(
+      fetch(event.request).catch(() => new Response('Offline', { status: 503 }))
+    );
     return;
   }
 
-  /* Para el resto: cache-first con fallback a red */
+  // Para el resto: cache-first con fallback a red
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        if (!response || response.status !== 200) return response;
+        if (!response || response.status !== 200 || response.type === 'opaque') return response;
         const clone = response.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         return response;
-      });
+      }).catch(() => new Response('Offline', { status: 503 }));
     })
   );
 });
+
