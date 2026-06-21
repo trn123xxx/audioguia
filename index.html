@@ -20,8 +20,8 @@
        ============================================================ -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const SUPABASE_URL  = 'https://nkwqaneqabiqokexocvi.supabase.co';      // ← MARCDOR
-    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rd3FhbmVxYWJpcW9rZXhvY3ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMjczMzgsImV4cCI6MjA5NzYwMzMzOH0.4FSGy-iN3vOO4xXu_8uhkO4AyhnuoDwbcws6ReNltxY'; // ← MARCADOR
+    const SUPABASE_URL  = 'TU_SUPABASE_URL';      // ← MARCADOR
+    const SUPABASE_ANON = 'TU_SUPABASE_ANON_KEY'; // ← MARCADOR
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
   </script>
 
@@ -995,12 +995,11 @@ function setSyncMsg(msg) {
    SERVICE WORKER
    ================================================================ */
 if ('serviceWorker' in navigator) {
-  // Desregistrar todos los SW anteriores y registrar el correcto
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(r => r.unregister());
-  });
-  const swPath = location.pathname.replace(/\/[^/]*$/, '/') + 'sw.js';
-  navigator.serviceWorker.register(swPath).catch(e => console.warn('SW:', e));
+  // Calcular la ruta base correcta (funciona en GitHub Pages con subcarpetas)
+  const swPath = new URL('sw.js', location.href).href;
+  navigator.serviceWorker.register(swPath)
+    .then(reg => console.log('SW registrado:', reg.scope))
+    .catch(e => console.warn('SW error:', e));
 }
 
 /* ================================================================
