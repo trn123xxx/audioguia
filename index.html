@@ -995,7 +995,12 @@ function setSyncMsg(msg) {
    SERVICE WORKER
    ================================================================ */
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW:', e));
+  // Desregistrar todos los SW anteriores y registrar el correcto
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+  });
+  const swPath = location.pathname.replace(/\/[^/]*$/, '/') + 'sw.js';
+  navigator.serviceWorker.register(swPath).catch(e => console.warn('SW:', e));
 }
 
 /* ================================================================
