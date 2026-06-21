@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#185FA5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Audioguía" />
+  <title>Audioguía Personal</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- ============================================================
+       SUPABASE — Reemplaza los dos marcadores con tus credenciales
+       Dashboard → Settings → API → Project URL y anon public key
+       ============================================================ -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL  = https://nkwqaneqabiqokexocvi.supabase.co/rest/v1/;      // ← MARCADOR
+    const SUPABASE_ANON = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rd3FhbmVxYWJpcW9rZXhvY3ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMjczMzgsImV4cCI6MjA5NzYwMzMzOH0.4FSGy-iN3vOO4xXu_8uhkO4AyhnuoDwbcws6ReNltxY; // ← MARCADOR
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-50:  #E6F1FB;
+      --blue-200: #85B7EB;
+      --blue-400: #378ADD;
+      --blue-600: #185FA5;
+      --blue-800: #0C447C;
+      --gray-50:  #F1EFE8;
+      --gray-200: #B4B2A9;
+      --gray-600: #5F5E5A;
+      --green-50: #EAF3DE;
+      --green-600:#3B6D11;
+      --amber-50: #FAEEDA;
+      --amber-200:#FAC775;
+      --amber-600:#854F0B;
+      --red-50:   #FCEBEB;
+      --red-200:  #F09595;
+      --red-600:  #A32D2D;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --border: 0.5px solid rgba(0,0,0,0.12);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      overflow: hidden;
+    }
+
+    /* ---- Layout principal ---- */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* ---- Bottom nav ---- */
+    nav {
+      background: #fff;
+      border-top: var(--border);
+      display: flex;
+      flex-shrink: 0;
+      z-index: 1000;
+    }
+    nav button {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 10px 4px;
+      background: none;
+      border: none;
+      font-size: 10px;
+      color: var(--gray-600);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    nav button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+    nav button.active { color: var(--blue-600); }
+    nav button.active svg { stroke: var(--blue-600); }
+
+    /* ---- Tabs ---- */
+    .tab-content { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+    .tab-content.active { display: flex; }
+
+    /* ---- TAB MAPA ---- */
+    #tab-mapa {
+      position: relative;
+      overflow: hidden;
+      flex-direction: column;
+    }
+
+    #map {
+      flex: 1;
+      width: 100%;
+      z-index: 1;
+    }
+
+    /* Panel flotante superior (GPS status) */
+    #map-header {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 900;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+    .map-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.95);
+      border: var(--border);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      pointer-events: auto;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+    .gps-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--gray-200);
+      flex-shrink: 0;
+    }
+    .gps-dot.active { background: #63992a; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    #gps-btn-map {
+      cursor: pointer;
+      color: var(--blue-600);
+      border-color: var(--blue-200);
+      background: rgba(230,241,251,0.95);
+    }
+
+    /* Panel flotante inferior (player + POI cercano) */
+    #map-footer {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 900;
+    }
+
+    .near-card {
+      background: rgba(255,255,255,0.97);
+      border: var(--border);
+      border-radius: var(--radius-lg);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: none;
+    }
+    .near-card.visible { display: block; }
+    .near-title { font-size: 13px; color: var(--gray-600); margin-bottom: 6px; }
+    .near-name { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .near-meta { font-size: 12px; color: var(--gray-600); }
+
+    .player-card {
+      background: rgba(230,241,251,0.97);
+      border: 0.5px solid var(--blue-200);
+      border-radius: var(--radius-lg);
+      padding: 12px 14px;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: none;
+    }
+    .player-card.visible { display: block; }
+    .player-name { font-size: 15px; font-weight: 600; color: var(--blue-800); margin-bottom: 8px; }
+    .player-controls { display: flex; align-items: center; gap: 10px; }
+    .play-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--blue-600);
+      color: #fff;
+      border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .play-btn svg { width: 16px; height: 16px; fill: #fff; stroke: none; }
+    .progress-track { flex: 1; }
+    .progress-bar {
+      width: 100%; height: 4px;
+      background: rgba(24,95,165,.2);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .progress-fill { height: 100%; border-radius: 2px; background: var(--blue-600); width: 0%; transition: width .1s linear; }
+    .time-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--blue-600); margin-top: 4px; }
+
+    /* ---- TAB POIS ---- */
+    #tab-pois { padding: 16px; }
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title { font-size: 17px; font-weight: 600; }
+
+    /* ---- TAB NUEVO ---- */
+    #tab-nuevo { padding: 16px; }
+
+    /* ---- TAB AJUSTES ---- */
+    #tab-ajustes { padding: 16px; }
+
+    /* ---- Cards ---- */
+    .card {
+      background: #fff;
+      border: var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 600;
+      color: var(--gray-600);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 10px;
+    }
+
+    /* ---- Stats ---- */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .stat { background: var(--gray-50); border-radius: var(--radius-md); padding: 10px 12px; }
+    .stat-num { font-size: 24px; font-weight: 600; }
+    .stat-label { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+
+    /* ---- POI list ---- */
+    .poi-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 0;
+      border-bottom: var(--border);
+    }
+    .poi-item:last-child { border-bottom: none; }
+    .poi-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--blue-50);
+      color: var(--blue-600);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 18px;
+    }
+    .poi-body { flex: 1; min-width: 0; }
+    .poi-name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .poi-meta { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+    .poi-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    /* ---- Buttons ---- */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 13px;
+      font-size: 13px; font-weight: 500;
+      border: var(--border);
+      border-radius: var(--radius-md);
+      background: #fff; color: #1a1a1a;
+      cursor: pointer; font-family: inherit;
+      text-decoration: none;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .btn-primary { background: var(--blue-50); color: var(--blue-600); border-color: var(--blue-200); }
+    .btn-danger  { background: var(--red-50);  color: var(--red-600);  border-color: var(--red-200); }
+    .btn-block   { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
+
+    /* ---- Form ---- */
+    .form-group { margin-bottom: 14px; }
+    .form-group label { font-size: 13px; color: var(--gray-600); display: block; margin-bottom: 5px; font-weight: 500; }
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 15px;
+      border: var(--border);
+      border-radius: var(--radius-md);
+      background: #fff; color: #1a1a1a;
+      font-family: inherit;
+      -webkit-appearance: none;
+    }
+    .form-group textarea { height: 80px; resize: vertical; }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ---- Badge ---- */
+    .badge {
+      display: inline-block; font-size: 11px;
+      padding: 2px 8px; border-radius: 20px; font-weight: 500;
+    }
+    .badge-green { background: var(--green-50); color: var(--green-600); }
+    .badge-gray  { background: var(--gray-50);  color: var(--gray-600); }
+
+    /* ---- Alert ---- */
+    .alert {
+      padding: 10px 14px; border-radius: var(--radius-md);
+      font-size: 13px; margin-bottom: 12px; line-height: 1.5;
+    }
+    .alert-info { background: var(--blue-50);  color: var(--blue-800);  border: 0.5px solid var(--blue-200); }
+    .alert-warn { background: var(--amber-50); color: var(--amber-600); border: 0.5px solid var(--amber-200); }
+
+    /* ---- Empty ---- */
+    .empty { text-align: center; padding: 40px 20px; color: var(--gray-600); }
+    .empty svg { width: 48px; height: 48px; stroke: var(--gray-200); fill: none; stroke-width: 1.2; margin-bottom: 12px; }
+    .empty p { font-size: 14px; }
+
+    /* ---- Spinner ---- */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid var(--blue-200);
+      border-top-color: var(--blue-600);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Leaflet overrides ---- */
+    .leaflet-control-zoom { border: var(--border) !important; border-radius: var(--radius-md) !important; overflow: hidden; }
+    .leaflet-control-zoom a { color: #1a1a1a !important; }
+    .leaflet-popup-content-wrapper { border-radius: var(--radius-lg) !important; box-shadow: 0 4px 20px rgba(0,0,0,.12) !important; }
+    .leaflet-popup-content { margin: 12px 16px !important; }
+    .poi-popup-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .poi-popup-meta { font-size: 12px; color: var(--gray-600); margin-bottom: 10px; }
+    .poi-popup-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--blue-50); color: var(--blue-600);
+      border: 0.5px solid var(--blue-200);
+      border-radius: var(--radius-md);
+      padding: 6px 12px; font-size: 13px; font-weight: 500;
+      cursor: pointer; font-family: inherit;
+    }
+
+    #sync-bar {
+      position: absolute;
+      top: 52px; left: 12px; right: 12px;
+      z-index: 901;
+      font-size: 12px;
+      text-align: center;
+      color: var(--gray-600);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    #sync-bar.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ==============================  TAB: MAPA (principal)  ============================== -->
+  <div id="tab-mapa" class="tab-content active">
+
+    <!-- Header flotante -->
+    <div id="map-header">
+      <div class="map-pill" id="gps-pill">
+        <div class="gps-dot" id="gps-dot"></div>
+        <span id="gps-label">GPS inactivo</span>
+      </div>
+      <div class="map-pill" id="gps-btn-map" onclick="startGPS()" style="cursor:pointer;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Activar GPS
+      </div>
+    </div>
+
+    <div id="sync-bar"></div>
+
+    <!-- Mapa Leaflet -->
+    <div id="map"></div>
+
+    <!-- Footer flotante -->
+    <div id="map-footer">
+      <div class="near-card" id="near-card">
+        <div class="near-title">📍 En zona de activación</div>
+        <div class="near-name" id="near-name">—</div>
+        <div class="near-meta" id="near-meta">—</div>
+      </div>
+      <div class="player-card" id="player-card">
+        <div class="player-name" id="player-name">—</div>
+        <div class="player-controls">
+          <button class="play-btn" onclick="togglePlay()" id="play-btn" aria-label="Reproducir / Pausar">
+            <svg id="play-icon" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+          </button>
+          <div class="progress-track">
+            <div class="progress-bar" onclick="seekAudio(event)">
+              <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="time-row">
+              <span id="time-cur">0:00</span>
+              <span id="time-dur">0:00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ==============================  TAB: MIS POIs  ============================== -->
+  <div id="tab-pois" class="tab-content">
+    <div class="section-header">
+      <span class="section-title">Mis POIs</span>
+      <button class="btn btn-primary" onclick="showTab('nuevo')">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Añadir
+      </button>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-num" id="count-pois">—</div><div class="stat-label">POIs guardados</div></div>
+      <div class="stat"><div class="stat-num" id="count-audio">—</div><div class="stat-label">Con audio</div></div>
+    </div>
+    <div class="card" id="all-pois-card"><div class="spinner"></div></div>
+  </div>
+
+  <!-- ==============================  TAB: AÑADIR  ============================== -->
+  <div id="tab-nuevo" class="tab-content">
+    <div class="section-header">
+      <span class="section-title">Nuevo POI</span>
+    </div>
+    <div class="alert alert-info">
+      Si el GPS está activo, las coordenadas se rellenan solas. Toca en el mapa para colocar el punto manualmente.
+    </div>
+    <div class="card">
+      <div class="form-group">
+        <label>Nombre del punto *</label>
+        <input type="text" id="new-name" placeholder="Ej: Catedral de Burgos" />
+      </div>
+      <div class="form-group">
+        <label>Descripción (se leerá si no hay audio)</label>
+        <textarea id="new-desc" placeholder="Texto que describe el lugar..."></textarea>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Latitud *</label>
+          <input type="number" id="new-lat" step="0.000001" placeholder="40.416775" />
+        </div>
+        <div class="form-group">
+          <label>Longitud *</label>
+          <input type="number" id="new-lon" step="0.000001" placeholder="-3.703790" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Radio de activación (metros)</label>
+        <input type="number" id="new-radius" value="50" min="10" max="1000" />
+      </div>
+      <div class="form-group">
+        <label>Archivo de audio (.mp3 / .m4a / .ogg)</label>
+        <input type="file" id="new-audio" accept="audio/*" />
+        <div style="font-size:12px;color:var(--gray-600);margin-top:4px;">Se sube a Supabase y se descarga en todos los dispositivos.</div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="savePOI()" id="save-btn">
+        <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Guardar POI
+      </button>
+    </div>
+  </div>
+
+  <!-- ==============================  TAB: AJUSTES  ============================== -->
+  <div id="tab-ajustes" class="tab-content">
+    <div class="section-header">
+      <span class="section-title">Ajustes</span>
+    </div>
+    <div class="card">
+      <div class="card-title">Detección</div>
+      <div class="form-group">
+        <label>Radio por defecto (metros)</label>
+        <input type="number" id="cfg-radius" value="50" min="10" max="500" onchange="saveConfig()" />
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Reproducción al entrar en zona</label>
+        <select id="cfg-autoplay" onchange="saveConfig()">
+          <option value="yes">Sí, reproducir automáticamente</option>
+          <option value="no">No, solo notificar</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Supabase</div>
+      <div class="alert alert-warn" style="margin-bottom:0;">
+        Edita <code>index.html</code> y reemplaza <code>TU_SUPABASE_URL</code> y <code>TU_SUPABASE_ANON_KEY</code>.<br><br>
+        Las encuentras en: <strong>supabase.com → tu proyecto → Settings → API</strong>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Caché y sincronización</div>
+      <button class="btn btn-block" onclick="syncAll()" style="margin-bottom:10px;">
+        <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.96"/></svg>
+        Sincronizar y descargar audios
+      </button>
+      <button class="btn btn-danger btn-block" onclick="clearCache()">
+        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+        Borrar caché de audios
+      </button>
+    </div>
+    <div class="card">
+      <div class="card-title">Instalación en móvil</div>
+      <div style="font-size:14px;line-height:1.9;color:var(--gray-600);">
+        <strong style="color:#1a1a1a;">Android (Chrome)</strong><br>Menú ⋮ → "Añadir a pantalla de inicio"<br><br>
+        <strong style="color:#1a1a1a;">iOS (Safari)</strong><br>Botón compartir ↑ → "Añadir a pantalla de inicio"
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <nav>
+    <button class="active" onclick="showTab('mapa')" id="nav-mapa">
+      <svg viewBox="0 0 24 24"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+      Mapa
+    </button>
+    <button onclick="showTab('pois')" id="nav-pois">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      Mis POIs
+    </button>
+    <button onclick="showTab('nuevo')" id="nav-nuevo">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Añadir
+    </button>
+    <button onclick="showTab('ajustes')" id="nav-ajustes">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Ajustes
+    </button>
+  </nav>
+
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+/* ================================================================
+   ESTADO GLOBAL
+   ================================================================ */
+let pois = [];
+let userLat = null, userLon = null;
+let watchId = null;
+let currentAudio = null;
+let lastPlayed = {};
+let audioCache = {};
+let map = null;
+let userMarker = null;
+let userCircle = null;
+let poiMarkers = {}; // id → { marker, circle }
+
+/* ================================================================
+   INDEXEDDB (caché local de audios y configuración)
+   ================================================================ */
+const IDB_NAME = 'audioguia-cache';
+let idb = null;
+
+function openIDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore('audios',  { keyPath: 'id' });
+      e.target.result.createObjectStore('config',  { keyPath: 'key' });
+    };
+    req.onsuccess = e => { idb = e.target.result; res(); };
+    req.onerror   = () => rej(req.error);
+  });
+}
+const idbGet    = (s,k)   => new Promise((res,rej) => { const r = idb.transaction(s).objectStore(s).get(k); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+const idbPut    = (s,v)   => new Promise((res,rej) => { const r = idb.transaction(s,'readwrite').objectStore(s).put(v); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
+const idbDelete = (s,k)   => new Promise((res,rej) => { const r = idb.transaction(s,'readwrite').objectStore(s).delete(k); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
+const idbGetAll = (s)     => new Promise((res,rej) => { const r = idb.transaction(s).objectStore(s).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); });
+
+/* ================================================================
+   CONFIGURACIÓN
+   ================================================================ */
+async function loadConfig() {
+  const r = await idbGet('config','radius');   if (r) document.getElementById('cfg-radius').value   = r.value;
+  const a = await idbGet('config','autoplay'); if (a) document.getElementById('cfg-autoplay').value = a.value;
+}
+async function saveConfig() {
+  await idbPut('config', { key:'radius',   value: document.getElementById('cfg-radius').value });
+  await idbPut('config', { key:'autoplay', value: document.getElementById('cfg-autoplay').value });
+}
+
+/* ================================================================
+   MAPA LEAFLET
+   ================================================================ */
+function initMap() {
+  map = L.map('map', { zoomControl: true, attributionControl: true });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  /* Centrar en España por defecto */
+  map.setView([40.4, -3.7], 6);
+
+  /* Click en el mapa → rellenar coordenadas del formulario */
+  map.on('click', e => {
+    document.getElementById('new-lat').value = e.latlng.lat.toFixed(6);
+    document.getElementById('new-lon').value = e.latlng.lng.toFixed(6);
+    setSyncMsg('📍 Coordenadas copiadas al formulario');
+  });
+}
+
+/* Icono POI personalizado */
+function poiIcon(near = false) {
+  const color = near ? '#3B6D11' : '#185FA5';
+  const bg    = near ? '#EAF3DE' : '#E6F1FB';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
+    <ellipse cx="16" cy="38" rx="6" ry="2" fill="rgba(0,0,0,.15)"/>
+    <path d="M16 0C9.37 0 4 5.37 4 12c0 9 12 26 12 26S28 21 28 12C28 5.37 22.63 0 16 0z" fill="${color}"/>
+    <circle cx="16" cy="12" r="6" fill="${bg}"/>
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    popupAnchor: [0, -42],
+    className: ''
+  });
+}
+
+function userLocationIcon() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+    <circle cx="11" cy="11" r="10" fill="rgba(24,95,165,.15)" stroke="#185FA5" stroke-width="1.5"/>
+    <circle cx="11" cy="11" r="5" fill="#185FA5"/>
+    <circle cx="11" cy="11" r="3" fill="white"/>
+  </svg>`;
+  return L.divIcon({ html: svg, iconSize: [22,22], iconAnchor: [11,11], className: '' });
+}
+
+function addPOIToMap(p) {
+  const marker = L.marker([p.lat, p.lon], { icon: poiIcon(false) }).addTo(map);
+  const circle = L.circle([p.lat, p.lon], {
+    radius: p.radius,
+    color: '#185FA5',
+    fillColor: '#E6F1FB',
+    fillOpacity: 0.15,
+    weight: 1.5,
+    dashArray: '4 4'
+  }).addTo(map);
+
+  const popupHtml = `
+    <div class="poi-popup-name">${p.name}</div>
+    <div class="poi-popup-meta">${p.radius} m · ${p.audio_path ? '🎵 audio' : '🔤 voz'}</div>
+    <button class="poi-popup-btn" onclick="playPOI(window.__popupPOI)">▶ Reproducir</button>`;
+
+  marker.bindPopup(popupHtml, { maxWidth: 220 });
+  marker.on('click', () => { window.__popupPOI = p; });
+
+  poiMarkers[p.id] = { marker, circle };
+}
+
+function removePOIFromMap(id) {
+  if (poiMarkers[id]) {
+    map.removeLayer(poiMarkers[id].marker);
+    map.removeLayer(poiMarkers[id].circle);
+    delete poiMarkers[id];
+  }
+}
+
+function refreshAllMapMarkers() {
+  Object.keys(poiMarkers).forEach(id => removePOIFromMap(id));
+  pois.forEach(p => addPOIToMap(p));
+}
+
+function updateUserOnMap(lat, lon) {
+  if (!map) return;
+  const latlng = [lat, lon];
+  if (!userMarker) {
+    userMarker = L.marker(latlng, { icon: userLocationIcon(), zIndexOffset: 1000 }).addTo(map);
+    userCircle = L.circle(latlng, { radius: 8, color: '#185FA5', fillColor: '#185FA5', fillOpacity: 0.3, weight: 0 }).addTo(map);
+    map.setView(latlng, 15);
+  } else {
+    userMarker.setLatLng(latlng);
+    userCircle.setLatLng(latlng);
+  }
+}
+
+/* ================================================================
+   SUPABASE
+   ================================================================ */
+async function loadPOIs() {
+  setSyncMsg('Sincronizando…');
+  try {
+    const { data, error } = await supabase.from('pois').select('*').order('created_at', { ascending: true });
+    if (error) throw error;
+    pois = data || [];
+    setSyncMsg('');
+  } catch (e) {
+    setSyncMsg('Sin conexión');
+    pois = [];
+  }
+  renderAllPOIs();
+  updateStats();
+  refreshAllMapMarkers();
+}
+
+async function savePOI() {
+  const name   = document.getElementById('new-name').value.trim();
+  const desc   = document.getElementById('new-desc').value.trim();
+  const lat    = parseFloat(document.getElementById('new-lat').value);
+  const lon    = parseFloat(document.getElementById('new-lon').value);
+  const radius = parseInt(document.getElementById('new-radius').value) || 50;
+  const file   = document.getElementById('new-audio').files[0];
+
+  if (!name || isNaN(lat) || isNaN(lon)) { alert('El nombre, la latitud y la longitud son obligatorios.'); return; }
+
+  const btn = document.getElementById('save-btn');
+  btn.textContent = 'Guardando…'; btn.disabled = true;
+
+  try {
+    let audio_path = null;
+    if (file) {
+      const ext  = file.name.split('.').pop();
+      const path = `audios/${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from('audioguia').upload(path, file);
+      if (uploadErr) throw uploadErr;
+      audio_path = path;
+      const ab = await file.arrayBuffer();
+      await idbPut('audios', { id: path, blob: new Blob([ab], { type: file.type }) });
+    }
+
+    const { data, error } = await supabase.from('pois').insert([{ name, description: desc, lat, lon, radius, audio_path }]).select().single();
+    if (error) throw error;
+
+    pois.push(data);
+    addPOIToMap(data);
+    renderAllPOIs();
+    updateStats();
+
+    ['new-name','new-desc','new-lat','new-lon'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('new-radius').value = '50';
+    document.getElementById('new-audio').value  = '';
+
+    showTab('mapa');
+    map.setView([lat, lon], 15);
+    alert('POI guardado correctamente.');
+  } catch (e) {
+    alert('Error al guardar: ' + e.message);
+  } finally {
+    btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar POI';
+    btn.disabled = false;
+  }
+}
+
+async function deletePOI(id, audioPath) {
+  if (!confirm('¿Eliminar este punto de interés?')) return;
+  try {
+    if (audioPath) {
+      await supabase.storage.from('audioguia').remove([audioPath]);
+      await idbDelete('audios', audioPath);
+    }
+    const { error } = await supabase.from('pois').delete().eq('id', id);
+    if (error) throw error;
+    pois = pois.filter(p => p.id !== id);
+    removePOIFromMap(id);
+    renderAllPOIs();
+    updateStats();
+  } catch (e) {
+    alert('Error al eliminar: ' + e.message);
+  }
+}
+
+/* ================================================================
+   AUDIO
+   ================================================================ */
+async function getAudioURL(audioPath) {
+  if (audioCache[audioPath]) return audioCache[audioPath];
+  const cached = await idbGet('audios', audioPath);
+  if (cached) {
+    const url = URL.createObjectURL(cached.blob);
+    audioCache[audioPath] = url;
+    return url;
+  }
+  const { data, error } = await supabase.storage.from('audioguia').download(audioPath);
+  if (error) throw error;
+  await idbPut('audios', { id: audioPath, blob: data });
+  const url = URL.createObjectURL(data);
+  audioCache[audioPath] = url;
+  return url;
+}
+
+async function syncAll() {
+  setSyncMsg('Descargando audios…');
+  try {
+    await loadPOIs();
+    for (const p of pois.filter(x => x.audio_path)) {
+      try { await getAudioURL(p.audio_path); } catch {}
+    }
+    setSyncMsg('Todo descargado ✓');
+    setTimeout(() => setSyncMsg(''), 3000);
+  } catch { setSyncMsg('Error de sincronización'); }
+}
+
+async function clearCache() {
+  if (!confirm('¿Borrar todos los audios del caché local?')) return;
+  audioCache = {};
+  const all = await idbGetAll('audios');
+  for (const a of all) await idbDelete('audios', a.id);
+  alert('Caché borrado.');
+}
+
+async function playPOI(p) {
+  document.getElementById('player-card').classList.add('visible');
+  document.getElementById('player-name').textContent = p.name;
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+
+  if (p.audio_path) {
+    try {
+      const url = await getAudioURL(p.audio_path);
+      currentAudio = new Audio(url);
+      setupPlayer(currentAudio);
+      currentAudio.play();
+    } catch (e) { alert('No se pudo cargar el audio. ¿Hay conexión?'); }
+  } else if (p.description && 'speechSynthesis' in window) {
+    const utt = new SpeechSynthesisUtterance(p.description);
+    utt.lang = 'es-ES';
+    speechSynthesis.speak(utt);
+    setPlayIcon(false);
+    utt.onend = () => setPlayIcon(true);
+    currentAudio = { pause: () => speechSynthesis.cancel(), isTTS: true };
+  }
+}
+
+function setupPlayer(audio) {
+  setPlayIcon(false);
+  audio.ontimeupdate = () => {
+    const pct = audio.duration ? (audio.currentTime / audio.duration * 100) : 0;
+    document.getElementById('progress-fill').style.width = pct.toFixed(1) + '%';
+    document.getElementById('time-cur').textContent = fmtTime(audio.currentTime);
+    document.getElementById('time-dur').textContent = fmtTime(audio.duration || 0);
+  };
+  audio.onended = () => setPlayIcon(true);
+}
+
+function togglePlay() {
+  if (!currentAudio) return;
+  if (currentAudio.isTTS) { speechSynthesis.cancel(); setPlayIcon(true); currentAudio = null; return; }
+  if (currentAudio.paused) { currentAudio.play(); setPlayIcon(false); }
+  else { currentAudio.pause(); setPlayIcon(true); }
+}
+
+function seekAudio(e) {
+  if (!currentAudio || currentAudio.isTTS || !currentAudio.duration) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  currentAudio.currentTime = ((e.clientX - rect.left) / rect.width) * currentAudio.duration;
+}
+
+function setPlayIcon(paused) {
+  document.getElementById('play-icon').innerHTML = paused
+    ? '<polygon points="5,3 19,12 5,21"/>'
+    : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+}
+
+function fmtTime(s) { return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0'); }
+
+/* ================================================================
+   GPS
+   ================================================================ */
+function startGPS() {
+  if (!navigator.geolocation) { alert('GPS no disponible en este navegador.'); return; }
+  document.getElementById('gps-label').textContent = 'Buscando señal…';
+  document.getElementById('gps-btn-map').style.display = 'none';
+  watchId = navigator.geolocation.watchPosition(onPosition, onGPSError, {
+    enableHighAccuracy: true, maximumAge: 5000, timeout: 15000
+  });
+}
+
+function onPosition(pos) {
+  userLat = pos.coords.latitude;
+  userLon = pos.coords.longitude;
+  document.getElementById('gps-dot').classList.add('active');
+  document.getElementById('gps-label').textContent = `${userLat.toFixed(4)}, ${userLon.toFixed(4)}`;
+  document.getElementById('new-lat').value = userLat.toFixed(6);
+  document.getElementById('new-lon').value = userLon.toFixed(6);
+  updateUserOnMap(userLat, userLon);
+  checkNearby();
+}
+
+function onGPSError(err) {
+  document.getElementById('gps-label').textContent = 'Sin señal GPS';
+  document.getElementById('gps-btn-map').style.display = 'inline-flex';
+}
+
+/* ================================================================
+   DETECCIÓN DE PROXIMIDAD
+   ================================================================ */
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+function checkNearby() {
+  if (userLat === null) return;
+  const withDist = pois.map(p => ({ ...p, dist: haversine(userLat, userLon, p.lat, p.lon) }));
+  const inZone   = withDist.filter(p => p.dist <= p.radius).sort((a,b) => a.dist - b.dist);
+
+  /* Actualizar color de marcadores */
+  withDist.forEach(p => {
+    if (poiMarkers[p.id]) {
+      poiMarkers[p.id].marker.setIcon(poiIcon(p.dist <= p.radius));
+    }
+  });
+
+  /* Card de zona activa */
+  const nearCard = document.getElementById('near-card');
+  if (inZone.length) {
+    const closest = inZone[0];
+    nearCard.classList.add('visible');
+    document.getElementById('near-name').textContent = closest.name;
+    document.getElementById('near-meta').textContent = `${closest.dist} m · ${closest.audio_path ? '🎵 audio' : '🔤 voz'}`;
+
+    const autoplay = document.getElementById('cfg-autoplay').value;
+    if (!lastPlayed[closest.id]) {
+      lastPlayed[closest.id] = true;
+      if (autoplay === 'yes') playPOI(closest);
+    }
+  } else {
+    nearCard.classList.remove('visible');
+  }
+
+  /* Limpiar lastPlayed de POIs que ya no están en zona */
+  withDist.filter(p => p.dist > p.radius * 1.5).forEach(p => delete lastPlayed[p.id]);
+}
+
+/* ================================================================
+   RENDER
+   ================================================================ */
+function renderAllPOIs() {
+  const el = document.getElementById('all-pois-card');
+  if (!pois.length) {
+    el.innerHTML = '<div class="empty"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg><p>Aún no tienes puntos de interés.</p></div>';
+    return;
+  }
+  el.innerHTML = pois.map(p => `
+    <div class="poi-item">
+      <div class="poi-avatar">🗺️</div>
+      <div class="poi-body">
+        <div class="poi-name">${p.name}</div>
+        <div class="poi-meta">
+          ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)} · ${p.radius} m
+          <span class="badge ${p.audio_path ? 'badge-green' : 'badge-gray'}" style="margin-left:4px">${p.audio_path ? 'Audio' : 'TTS'}</span>
+        </div>
+      </div>
+      <div class="poi-actions">
+        <button class="btn btn-primary" onclick="goToMap(${p.lat},${p.lon})" title="Ver en mapa">🗺</button>
+        <button class="btn btn-primary" onclick='playPOI(${JSON.stringify(p).replace(/'/g,"&#39;")})' title="Reproducir">▶</button>
+        <button class="btn btn-danger"  onclick="deletePOI('${p.id}',${p.audio_path ? `'${p.audio_path}'` : 'null'})" title="Eliminar">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function updateStats() {
+  document.getElementById('count-pois').textContent  = pois.length;
+  document.getElementById('count-audio').textContent = pois.filter(p => p.audio_path).length;
+}
+
+function goToMap(lat, lon) {
+  showTab('mapa');
+  map.setView([lat, lon], 16);
+}
+
+/* ================================================================
+   NAVEGACIÓN
+   ================================================================ */
+function showTab(name) {
+  ['mapa','pois','nuevo','ajustes'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    document.getElementById('nav-' + t).classList.toggle('active', t === name);
+  });
+  if (name === 'mapa' && map) setTimeout(() => map.invalidateSize(), 50);
+}
+
+function setSyncMsg(msg) {
+  const el = document.getElementById('sync-bar');
+  el.textContent = msg;
+  el.classList.toggle('visible', msg !== '');
+}
+
+/* ================================================================
+   SERVICE WORKER
+   ================================================================ */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW:', e));
+}
+
+/* ================================================================
+   INIT
+   ================================================================ */
+(async () => {
+  await openIDB();
+  await loadConfig();
+  initMap();
+  await loadPOIs();
+})();
+</script>
+</body>
+</html>
